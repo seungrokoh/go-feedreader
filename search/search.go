@@ -17,6 +17,7 @@ func Run(searchTerm string) {
 
 	var waitGroup sync.WaitGroup
 
+	waitGroup.Add(len(feeds))
 	for _, feed := range feeds {
 		matcher, exists := matchers[feed.Type]
 		if !exists {
