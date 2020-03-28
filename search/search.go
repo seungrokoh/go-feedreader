@@ -7,35 +7,47 @@ import (
 
 var matchers = make(map[string]Matcher)
 
+type ResultPipe func(<-chan *Result) <-chan *Result
+
 func Run(searchTerm string) {
 	feeds, err := RetrieveFeeds()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	results := make(chan *Result)
+	cs := make([]<-chan *Result, len(feeds))
 
-	var waitGroup sync.WaitGroup
-
-	waitGroup.Add(len(feeds))
-	for _, feed := range feeds {
-		matcher, exists := matchers[feed.Type]
-		if !exists {
+	// 여기서 여러개로 나누기
+	for i, feed := range feeds {
+		matcher, exist := matchers[feed.Type]
+		if !exist {
 			matcher = matchers["default"]
 		}
+		cs[i] = Match(matcher, feed, searchTerm)
+	}
+	Display(FanIn(cs...))
 
-		go func(matcher Matcher, feed *Feed) {
-			defer waitGroup.Done()
-			Match(matcher, feed, searchTerm, results)
-		}(matcher, feed)
+}
+
+func FanIn(ins ...<-chan *Result) <-chan *Result {
+	out := make(chan *Result)
+	var wg sync.WaitGroup
+	wg.Add(len(ins))
+	for _, in := range ins {
+		go func(in <-chan *Result) {
+			defer wg.Done()
+			for result := range in {
+				out <- result
+			}
+		}(in)
 	}
 
 	go func() {
-		waitGroup.Wait()
-		close(results)
+		defer close(out)
+		wg.Wait()
 	}()
 
-	Display(results)
+	return out
 }
 
 func Register(feedType string, matcher Matcher) {
