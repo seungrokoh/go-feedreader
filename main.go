@@ -15,10 +15,10 @@ func init() {
 }
 
 func main() {
+	defer fmt.Println("num of goroutine : ", runtime.NumGoroutine())
 	keyword := flag.String("keyword", "", "search keyword")
 	flag.Parse()
 	search.Run(*keyword)
-	fmt.Println("num of goroutine : ", runtime.NumGoroutine())
 }
 
 // 1. go run main.go -keyword=corona flag

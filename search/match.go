@@ -32,24 +32,16 @@ func Match(ctx context.Context, matcher Matcher, feed *Feed, searchTerm string) 
 		}
 
 		for _, result := range searchResults {
-			if gotCancel(ctx) {
-				fmt.Println("goroutine canceled!!!!")
+			select {
+			case <-ctx.Done():
+				fmt.Println("Canceled goroutine!!!!")
 				return
+			case out <- result:
+				time.Sleep(300 * time.Millisecond)
 			}
-			out <- result
-			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
 	return out
-}
-
-func gotCancel(ctx context.Context) bool{
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		return false
-	}
 }
 
 // 개별 고루틴이 전달한 검색 결과를 콘솔에 출력
