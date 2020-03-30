@@ -1,8 +1,10 @@
 package search
 
 import (
+	"context"
 	"log"
 	"sync"
+	"time"
 )
 
 var matchers = make(map[string]Matcher)
@@ -16,15 +18,19 @@ func Run(searchTerm string) {
 	}
 
 	cs := make([]<-chan *Result, len(feeds))
-
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(2000 * time.Millisecond, func() {
+		cancel()
+	})
 	// 여기서 여러개로 나누기
 	for i, feed := range feeds {
 		matcher, exist := matchers[feed.Type]
 		if !exist {
 			matcher = matchers["default"]
 		}
-		cs[i] = Match(matcher, feed, searchTerm)
+		cs[i] = Match(ctx, matcher, feed, searchTerm)
 	}
+
 	Display(FanIn(cs...))
 
 }
@@ -41,6 +47,7 @@ func FanIn(ins ...<-chan *Result) <-chan *Result {
 			}
 		}(in)
 	}
+
 
 	go func() {
 		defer close(out)

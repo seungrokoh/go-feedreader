@@ -1,6 +1,11 @@
 package search
 
-import "log"
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+)
 
 type Result struct {
 	Field   string
@@ -13,7 +18,7 @@ type Matcher interface {
 }
 
 // 고루틴으로써 호출되며 개별 피드 타입에 대한 검색을 동시에 수행
-func Match(matcher Matcher, feed *Feed, searchTerm string) <-chan *Result {
+func Match(ctx context.Context, matcher Matcher, feed *Feed, searchTerm string) <-chan *Result {
 	// 지정된 검색기를 이용해 검색을 수행
 	out := make(chan *Result)
 	// 검색 결과를 채널에 기록
@@ -21,13 +26,30 @@ func Match(matcher Matcher, feed *Feed, searchTerm string) <-chan *Result {
 		defer close(out)
 		searchResults, err := matcher.Search(feed, searchTerm)
 		if err != nil {
-			log.Println(err)
+			// 시간초과로 err 발생할 시 고루틴 종료
+			log.Println("Search error timeout!!!!! : ", err)
+			return
 		}
+
 		for _, result := range searchResults {
+			if gotCancel(ctx) {
+				fmt.Println("goroutine canceled!!!!")
+				return
+			}
 			out <- result
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
 	return out
+}
+
+func gotCancel(ctx context.Context) bool{
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 // 개별 고루틴이 전달한 검색 결과를 콘솔에 출력

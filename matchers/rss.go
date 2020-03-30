@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"time"
 )
 
 type (
@@ -108,8 +109,11 @@ func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
 	if feed.URI == "" {
 		return nil, errors.New("검색할 RSS 피드가 정의되지 않았습니다")
 	}
+	client := http.Client{
+		Timeout:       500 * time.Millisecond,
+	}
+	resp, err := client.Get(feed.URI)
 
-	resp, err := http.Get(feed.URI)
 	if err != nil {
 		return nil, err
 	}
