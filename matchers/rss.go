@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"time"
 )
 
 type (
@@ -72,7 +71,7 @@ func (m rssMatcher) Search(ctx context.Context, feed *search.Feed, searchTerm st
 
 	// 고루틴을 생성함으로써 장점은 없지만 연습용으로 구현
 	go func() {
-		document, err := m.retrieve(feed)
+		document, err := m.retrieve(ctx, feed)
 		if err != nil {
 			out <- createResponse(nil, err)
 			return
@@ -134,14 +133,18 @@ func IsContextDone(ctx context.Context) bool {
 	}
 }
 
-func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
+func (m rssMatcher) retrieve(ctx context.Context, feed *search.Feed) (*rssDocument, error) {
 	if feed.URI == "" {
 		return nil, errors.New("검색할 RSS 피드가 정의되지 않았습니다")
 	}
-	client := http.Client{
-		Timeout: 500 * time.Millisecond,
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.URI, nil)
+	if err != nil {
+		return nil, err
 	}
-	resp, err := client.Get(feed.URI)
+
+	defaultClient := &http.Client{}
+	resp, err := defaultClient.Do(req)
 
 	if err != nil {
 		return nil, err
