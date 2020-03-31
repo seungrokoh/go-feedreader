@@ -18,10 +18,9 @@ func Run(searchTerm string) {
 	}
 
 	cs := make([]<-chan *Result, len(feeds))
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(2000 * time.Millisecond, func() {
-		cancel()
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	defer cancel()
+
 	// 여기서 여러개로 나누기
 	for i, feed := range feeds {
 		matcher, exist := matchers[feed.Type]
@@ -47,7 +46,6 @@ func FanIn(ins ...<-chan *Result) <-chan *Result {
 			}
 		}(in)
 	}
-
 
 	go func() {
 		defer close(out)

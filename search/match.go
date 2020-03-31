@@ -12,9 +12,14 @@ type Result struct {
 	Content string
 }
 
+type Response struct {
+	Result *Result
+	Error  error
+}
+
 // 검색 타입의 필요한 동작을 정의
 type Matcher interface {
-	Search(feed *Feed, searchTerm string) ([]*Result, error)
+	Search(ctx context.Context, feed *Feed, searchTerm string) <-chan *Response
 }
 
 // 고루틴으로써 호출되며 개별 피드 타입에 대한 검색을 동시에 수행
@@ -24,20 +29,20 @@ func Match(ctx context.Context, matcher Matcher, feed *Feed, searchTerm string) 
 	// 검색 결과를 채널에 기록
 	go func() {
 		defer close(out)
-		searchResults, err := matcher.Search(feed, searchTerm)
-		if err != nil {
-			// 시간초과로 err 발생할 시 고루틴 종료
-			log.Println("Search error timeout!!!!! : ", err)
-			return
-		}
+		response := matcher.Search(ctx, feed, searchTerm)
 
-		for _, result := range searchResults {
+		for {
 			select {
 			case <-ctx.Done():
-				fmt.Println("Canceled goroutine!!!!")
+				fmt.Println("Canceled goroutine")
 				return
-			case out <- result:
-				time.Sleep(300 * time.Millisecond)
+			case response := <-response:
+				if err := response.Error; err != nil {
+					fmt.Println("Error : ", err)
+					return
+				}
+				out <- response.Result
+				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	}()

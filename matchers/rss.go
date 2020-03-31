@@ -1,6 +1,7 @@
 package matchers
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -64,45 +65,73 @@ func init() {
 	search.Register("rss", matcher)
 }
 
-func (m rssMatcher) Search(feed *search.Feed, searchTerm string) ([]*search.Result, error) {
-	var results []*search.Result
+func (m rssMatcher) Search(ctx context.Context, feed *search.Feed, searchTerm string) <-chan *search.Response {
+	out := make(chan *search.Response)
 
 	log.Printf("피드 종류[%s] 사이트[%s] 주소[%s]에서 검색을 수행합니다.\n", feed.Type, feed.Name, feed.URI)
 
-	document, err := m.retrieve(feed)
+	// 고루틴을 생성함으로써 장점은 없지만 연습용으로 구현
+	go func() {
+		document, err := m.retrieve(feed)
+		if err != nil {
+			out <- createResponse(nil, err)
+			return
+		}
+
+		for _, channelItem := range document.Channel.Item {
+			// context.Done이 들어오면 고루틴을 종료한다.
+			if IsContextDone(ctx) {
+				log.Println("Canceled Search Goroutine!!!")
+				return
+			}
+
+			if response := containKeywordInItem(searchTerm, "Title", channelItem.Title); response != nil {
+				out <- response
+			}
+
+			if response := containKeywordInItem(searchTerm, "Description", channelItem.Description); response != nil {
+				out <- response
+			}
+		}
+	}()
+	return out
+}
+
+func containKeywordInItem(keyword, field, channelItem string) *search.Response {
+	matched, err := regexp.MatchString(keyword, channelItem)
+	// matchString 에러 발생시 err response 생성
 	if err != nil {
-		return nil, err
+		return createResponse(nil, err)
 	}
-
-	for _, channelItem := range document.Channel.Item {
-		matched, err := regexp.MatchString(searchTerm, channelItem.Title)
-		if err != nil {
-			return nil, err
-		}
-
-		// 검색어가 발견되면 결과에 저장
-		if matched {
-			results = append(results, &search.Result{
-				Field:   "Title",
-				Content: channelItem.Title,
-			})
-		}
-
-		// 상세 내용에서 검색어를 검색
-		matched, err = regexp.MatchString(searchTerm, channelItem.Description)
-		if err != nil {
-			return nil, err
-		}
-
-		if matched {
-			results = append(results, &search.Result{
-				Field:   "Description",
-				Content: channelItem.Description,
-			})
-		}
+	// keyword가 Item안에 존재 할 경우
+	if matched {
+		return createResponse(createResult(field, channelItem), nil)
+	} else {
+		return nil
 	}
+}
 
-	return results, nil
+func createResult(field, content string) *search.Result {
+	return &search.Result{
+		Field:   field,
+		Content: content,
+	}
+}
+
+func createResponse(result *search.Result, err error) *search.Response {
+	return &search.Response{
+		Result: result,
+		Error:  err,
+	}
+}
+
+func IsContextDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
@@ -110,7 +139,7 @@ func (m rssMatcher) retrieve(feed *search.Feed) (*rssDocument, error) {
 		return nil, errors.New("검색할 RSS 피드가 정의되지 않았습니다")
 	}
 	client := http.Client{
-		Timeout:       500 * time.Millisecond,
+		Timeout: 500 * time.Millisecond,
 	}
 	resp, err := client.Get(feed.URI)
 
